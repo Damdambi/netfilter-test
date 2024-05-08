@@ -41,14 +41,25 @@ int TcpHeader(unsigned char* buf, int offset){
 		printf("%02X ", buf[i+offset]);
 	}
 	printf("\n");
-	if(buf[offset]==0 && buf[offset+1]==80){
-		return i+offset;
+	return i+offset;
+}
+
+int CheckHttp(unsigned char* buf, int offset){
+	//check Request's method, Response's status line
+	char *Method[9] = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "CONNECT", "TRACE"};
+	int LeterrLen[9] = {3,4,3,5,6,4,7,7,5};
+	int ret=0;
+	int flag=0; //When flag=1 -> HTTP / flag=0 -> Not HTTP
+	/*1. check requeset*/
+	for(int i=0; i<9; i++){
+		ret = memcmp(buf+offset, Method[i], LeterrLen[i]);
+		if(ret==0) flag=1;
 	}
-	else if(buf[offset+2]==0 && buf[offset+3]==80)
-	{
-		return i+offset;
-	}
-	else return 0;
+	/*2. check response*/
+	ret = memcmp(buf+offset, "HTTP", 4);
+	if(ret==0) flag=1;
+	/*return flag*/
+	return flag;
 }
 
 int Http(unsigned char* buf, int offset, int size){
@@ -59,20 +70,20 @@ int Http(unsigned char* buf, int offset, int size){
 		printf("%02X ", buf[i+offset]);
 	}
 	printf("\n");
-	char* ptr1 = strstr(buf+offset, (char*)hostname);
-	char* ptr2 = strstr(buf+offset, "Host:");
+	char* ptr1 = strstr(buf+offset, "Host:");
+	int ret = 0;
 	if (ptr1){
 		ptr1 = strtok(ptr1, "\r\n");
-		printf("Host: %s\n", ptr1);
-		return 0;
+		printf("%s\n", ptr1);
+		ret = memcmp((char*)(ptr1+6),(char*)hostname, strlen(ptr1+6));
+		if(ret==0){ //detect site!!!
+			return 0;
+		}
+		else return 1;
 	}
-	else if(ptr2){
-		ptr2 = strtok(ptr2, "\r\n");
-		printf("%s\n",ptr2);
-		return 1;
-	}
-	else{
-		printf("HOST NOT EXIST!!!\n");
+	else
+	{
+		printf("[Response Packet!!!]\n");
 		return 1;
 	}
 }
@@ -80,13 +91,17 @@ int Http(unsigned char* buf, int offset, int size){
 int dump(unsigned char* buf, int size) {
 	printf("\n");
 	int i;
+	int check;
 	i = IpHeader(buf);
 	i = TcpHeader(buf, i);
-	if(i==0){
-		printf("Not HTTP protocol\n");
+	check = CheckHttp(buf, i);
+	if(check){
+		return Http(buf, i, size); //if return 0 -> detect site, 1 -> safe site
+	}
+	else{
+		printf("[Not HTTP packet!!!]\n");
 		return 1;
 	}
-	else return Http(buf, i, size); //if return 0 -> detect site, 1 -> safe site 
 }
 
 /* returns packet id */
